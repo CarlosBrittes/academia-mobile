@@ -93,12 +93,16 @@ Obs: A proteção criptográfica é fornecida pelo Firebase: a comunicação de 
 Os destaquei dois testes automatizados que estão separados em dois arquivos, com os seguintes objetivos:
 
 Arquivo>
+
 [tests/funcoes.test.cjs](tests/funcoes.test.cjs)
+
 Objetivo: Normalizar telefones válidos; rejeitar telefone incompleto e cadastro sem nome válido.
 
 
 |Arquivo>
+
 [tests/persistencia.test.cjs](tests/persistencia.test.cjs)
+
 Objetivo: Recuperar aluno/treino em outra instância do repositório; preservar histórico e autoria ao salvar atualizações. |
 
 Para executar cada arquivo separadamente:
