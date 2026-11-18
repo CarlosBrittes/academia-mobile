@@ -1,0 +1,145 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function profile() { return get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data; }
+    function active() { return signedIn() && profile().active == true && profile().role in ['admin', 'teacher']; }
+    function admin() { return active() && profile().role == 'admin'; }
+    function owns(data) { return active() && (profile().role == 'admin' || data.teacherId == request.auth.uid); }
+    function ownStudent(studentId, data) {
+      return signedIn() && profile().active == true && profile().role == 'student'
+        && profile().studentId == studentId && data.get('authUid', null) == request.auth.uid && data.deleting == false;
+    }
+    function validAsset(asset) {
+      return asset == null || (asset is map
+        && asset.keys().hasAll(['name', 'mimeType', 'size', 'width', 'height'])
+        && ((asset.keys().hasOnly(['localKey', 'name', 'mimeType', 'size', 'width', 'height'])
+            && asset.keys().hasAll(['localKey']) && asset.localKey is string && asset.localKey.size() <= 128)
+          || (asset.keys().hasOnly(['fileId', 'name', 'mimeType', 'size', 'width', 'height'])
+            && asset.keys().hasAll(['fileId']) && asset.fileId is string
+            && asset.fileId.matches('^[A-Za-z0-9_-]{1,128}$')))
+        && asset.name is string && asset.name.size() <= 255
+        && (asset.mimeType == null || (asset.mimeType is string && asset.mimeType.size() <= 120))
+        && (asset.size == null || (asset.size is number && asset.size >= 0 && asset.size <= 52428800))
+        && (asset.width == null || (asset.width is number && asset.width > 0))
+        && (asset.height == null || (asset.height is number && asset.height > 0)));
+    }
+    function fileStudentExists(data) { return exists(/databases/$(database)/documents/students/$(data.studentId)); }
+    function fileStudent(data) { return get(/databases/$(database)/documents/students/$(data.studentId)).data; }
+    function fileAccess(data) { return active() && (admin() || data.ownerId == request.auth.uid || (fileStudentExists(data) && owns(fileStudent(data)))); }
+    function studentFileAccess(data) { return data.status == 'ready' && fileStudentExists(data) && ownStudent(data.studentId, fileStudent(data)); }
+    function fileWritable(data) { return active() && data.ownerId == request.auth.uid && (!fileStudentExists(data) || (owns(fileStudent(data)) && fileStudent(data).deleting == false)); }
+    match /files/{fileId} {
+      allow read: if fileAccess(resource.data) || studentFileAccess(resource.data);
+      allow create: if fileWritable(request.resource.data)
+        && request.resource.data.keys().hasOnly(['ownerId', 'studentId', 'name', 'mimeType', 'size', 'width', 'height', 'chunkCount', 'status', 'createdAt', 'updatedAt'])
+        && request.resource.data.keys().hasAll(['ownerId', 'studentId', 'name', 'mimeType', 'size', 'width', 'height', 'chunkCount', 'status', 'createdAt', 'updatedAt'])
+        && fileId.matches('^[A-Za-z0-9_-]{1,128}$')
+        && request.resource.data.studentId is string && request.resource.data.studentId.matches('^[A-Za-z0-9_-]{1,128}$')
+        && request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 255
+        && request.resource.data.mimeType is string && request.resource.data.mimeType.size() <= 120
+        && request.resource.data.size is int && request.resource.data.size > 0
+        && ((request.resource.data.mimeType.matches('^image/.*$') && request.resource.data.mimeType != 'image/svg+xml' && request.resource.data.size <= 2097152)
+          || (request.resource.data.mimeType == 'application/pdf' && request.resource.data.size <= 5242880)
+          || (request.resource.data.mimeType.matches('^video/.*$') && request.resource.data.size <= 10485760))
+        && (request.resource.data.width == null || (request.resource.data.width is number && request.resource.data.width > 0))
+        && (request.resource.data.height == null || (request.resource.data.height is number && request.resource.data.height > 0))
+        && request.resource.data.chunkCount is int && request.resource.data.chunkCount == int((request.resource.data.size + 196607) / 196608)
+        && request.resource.data.status == 'uploading'
+        && request.resource.data.createdAt == request.time && request.resource.data.updatedAt == request.time;
+      allow update: if fileWritable(resource.data) && resource.data.status == 'uploading'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt'])
+        && request.resource.data.status == 'ready' && request.resource.data.updatedAt == request.time;
+      allow delete: if fileAccess(resource.data);
+      match /chunks/{chunkId} {
+        function parentFile() { return get(/databases/$(database)/documents/files/$(fileId)).data; }
+        allow read: if (fileAccess(parentFile()) && (parentFile().status == 'ready' || parentFile().ownerId == request.auth.uid)) || studentFileAccess(parentFile());
+        allow create: if fileWritable(parentFile()) && parentFile().status == 'uploading'
+          && request.resource.data.keys().hasOnly(['index', 'data']) && request.resource.data.keys().hasAll(['index', 'data'])
+          && chunkId.matches('^(0|[1-9][0-9]?)$') && request.resource.data.index is int && request.resource.data.index == int(chunkId)
+          && request.resource.data.index >= 0 && request.resource.data.index < parentFile().chunkCount
+          && request.resource.data.data is string && request.resource.data.data.size() > 0 && request.resource.data.data.size() <= 262144
+          && request.resource.data.data.matches('^[A-Za-z0-9+/]+={0,2}$');
+        allow update: if false;
+        allow delete: if fileAccess(parentFile());
+      }
+    }
+    match /profiles/{uid} {
+      function validStudentProfile() {
+        let data = request.resource.data;
+        let student = get(/databases/$(database)/documents/students/$(data.studentId)).data;
+        let linked = getAfter(/databases/$(database)/documents/students/$(data.studentId)).data;
+        return active() && data.role == 'student' && data.activity == null
+          && data.studentId is string && data.studentId.matches('^[A-Za-z0-9_-]{1,128}$')
+          && owns(student) && student.deleting == false && student.get('authUid', null) == null
+          && data.name == student.name && linked.authUid == uid && linked.email == data.email;
+      }
+      allow get: if signedIn() && (request.auth.uid == uid || admin());
+      allow list: if admin();
+      allow create: if request.resource.data.keys().hasAll(['name', 'email', 'role', 'activity', 'active', 'createdAt'])
+        && request.resource.data.name is string && request.resource.data.name.size() >= 3 && request.resource.data.name.size() <= 120
+        && request.resource.data.email is string && request.resource.data.email.size() <= 254
+        && request.resource.data.active == true && request.resource.data.createdAt == request.time
+        && ((admin() && request.resource.data.keys().hasOnly(['name', 'email', 'role', 'activity', 'active', 'createdAt'])
+            && ((request.resource.data.role == 'admin' && request.resource.data.activity == null)
+              || (request.resource.data.role == 'teacher' && request.resource.data.activity in ['Personal', 'Treinamento personalizado', 'Pilates', 'Nutricionista', 'Fisioterapeuta'])))
+          || (request.resource.data.keys().hasOnly(['name', 'email', 'role', 'activity', 'active', 'createdAt', 'studentId'])
+            && validStudentProfile()));
+      // Role/activation changes and the first administrator are managed in Console.
+      allow update, delete: if false;
+    }
+    match /students/{studentId} {
+      function linkStudentAccess() {
+        let uid = request.resource.data.authUid;
+        let linked = getAfter(/databases/$(database)/documents/profiles/$(uid)).data;
+        return resource.data.deleting == false && resource.data.get('authUid', null) == null
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['authUid', 'email', 'updatedAt'])
+          && uid is string && uid.matches('^[A-Za-z0-9_-]{1,128}$')
+          && !exists(/databases/$(database)/documents/profiles/$(uid))
+          && linked.role == 'student' && linked.studentId == studentId && linked.active == true
+          && linked.name == resource.data.name && linked.email == request.resource.data.email;
+      }
+      allow get: if (active() && (!exists(/databases/$(database)/documents/students/$(studentId)) || owns(resource.data))) || ownStudent(studentId, resource.data);
+      allow list: if owns(resource.data);
+      allow create: if active()
+        && request.resource.data.keys().hasOnly(['name', 'phone', 'goal', 'photo', 'teacherId', 'deleting', 'createdAt', 'updatedAt'])
+        && request.resource.data.keys().hasAll(['name', 'phone', 'goal', 'photo', 'teacherId', 'deleting', 'createdAt', 'updatedAt'])
+        && request.resource.data.teacherId == request.auth.uid
+        && request.resource.data.name is string && request.resource.data.name.size() >= 3 && request.resource.data.name.size() <= 120
+        && request.resource.data.phone is string && request.resource.data.phone.matches('^55[1-9][0-9][0-9]{8,9}$')
+        && request.resource.data.goal is string && request.resource.data.goal.size() <= 2000
+        && validAsset(request.resource.data.photo)
+        && request.resource.data.deleting == false
+        && request.resource.data.createdAt == request.time && request.resource.data.updatedAt == request.time;
+      allow update: if owns(resource.data)
+        && request.resource.data.updatedAt == request.time && request.resource.data.deleting is bool
+        && ((request.resource.data.diff(resource.data).affectedKeys().hasOnly(['updatedAt', 'deleting'])
+            && (!resource.data.deleting || request.resource.data.deleting))
+          || linkStudentAccess());
+      allow delete: if owns(resource.data) && resource.data.deleting == true;
+      match /records/{recordId} {
+        function student() { return get(/databases/$(database)/documents/students/$(studentId)).data; }
+        function afterStudent() { return getAfter(/databases/$(database)/documents/students/$(studentId)).data; }
+        allow read: if owns(student()) || ownStudent(studentId, student());
+        allow create: if owns(student()) && student().deleting == false && afterStudent().deleting == false
+          && afterStudent().updatedAt == request.time
+          && request.resource.data.keys().hasOnly(['category', 'title', 'content', 'performedOn', 'attachment', 'exercises', 'meals', 'author', 'authorId', 'date', 'updatedAt'])
+          && request.resource.data.keys().hasAll(['category', 'title', 'content', 'performedOn', 'attachment', 'exercises', 'meals', 'author', 'authorId', 'date', 'updatedAt'])
+          && request.resource.data.category in ['Treino', 'Nutrição', 'Bioimpedância']
+          && request.resource.data.title is string && request.resource.data.title.size() > 0 && request.resource.data.title.size() <= 200
+          && request.resource.data.content is string && request.resource.data.content.size() <= 8000
+          && request.resource.data.authorId == request.auth.uid && request.resource.data.author == profile().name
+          && request.resource.data.date == request.time && request.resource.data.updatedAt == request.time
+          && request.resource.data.exercises is list && request.resource.data.exercises.size() <= 100
+          && request.resource.data.meals is list && request.resource.data.meals.size() <= 100
+          && validAsset(request.resource.data.attachment)
+          && ((request.resource.data.category == 'Bioimpedância' && request.resource.data.performedOn is string
+              && request.resource.data.performedOn.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$') && request.resource.data.attachment != null)
+            || (request.resource.data.category != 'Bioimpedância' && request.resource.data.performedOn == null && request.resource.data.attachment == null));
+        allow update: if false;
+        allow delete: if owns(student()) && student().deleting == true;
+      }
+    }
+    match /{document=**} { allow read, write: if false; }
+  }
+}

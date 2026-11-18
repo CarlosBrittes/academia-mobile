@@ -1,0 +1,34 @@
+{
+  "expo": {
+    "name": "Studio 6.4",
+    "slug": "forma-academia",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "web": {
+      "name": "Studio 6.4",
+      "shortName": "Studio 6.4",
+      "favicon": "./assets/s64-logo.png"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.exemplo.forma"
+    },
+    "android": {
+      "package": "com.exemplo.forma"
+    },
+    "plugins": [
+      "expo-document-picker",
+      "expo-video",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "O Studio 6.4 usa a foto que você escolher para identificar o aluno.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ]
+    ],
+    "icon": "./assets/s64-logo.png"
+  }
+}

@@ -1,0 +1,14 @@
+node_modules/
+.expo/
+dist/
+dist-*/
+.env
+.env*
+.env.*
+!.env.example
+*.jks
+*.keystore
+*-debug.log
+*-service-account*.json
+.tools/
+.firebase/
