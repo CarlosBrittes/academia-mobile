@@ -77,11 +77,9 @@ Abra o **Expo Go compatível com o SDK 54** e leia o QR Code exibido no terminal
 [src/Workspace.js](src/Workspace.js): `Linking.openURL` abre o WhatsApp. [src/StudentPhotoPicker.js](src/StudentPhotoPicker.js) também acessa a galeria para selecionar a foto do aluno.
 
 | FlatList: 
-
 [src/Workspace.js](src/Workspace.js): a tela `students` usa `<FlatList data={filtered}>`, `keyExtractor` e `renderItem` para listar os alunos.
 
 | Criptografia: 
-
 [src/auth.js](src/auth.js): `signInWithEmailAndPassword` e `createUserWithEmailAndPassword` delegam a autenticação ao Firebase Authentication.
 
 Obs: A proteção criptográfica é fornecida pelo Firebase: a comunicação de produção usa HTTPS/TLS, as senhas são armazenadas como hashes com salt e o padrão do Authentication é uma versão modificada de scrypt. O Firestore também criptografa os dados em repouso. O app não implementa um algoritmo criptográfico próprio nem grava senhas em documentos do Firestore
@@ -95,15 +93,13 @@ Obs: A proteção criptográfica é fornecida pelo Firebase: a comunicação de 
 
 Os destaquei dois testes automatizados que estão separados em dois arquivos, com os seguintes objetivos:
 
-Arquivo>
-
+Arquivo> 
 [tests/funcoes.test.cjs](tests/funcoes.test.cjs)
 
 Objetivo: Normalizar telefones válidos; rejeitar telefone incompleto e cadastro sem nome válido.
 
 
-|Arquivo>
-
+|Arquivo> 
 [tests/persistencia.test.cjs](tests/persistencia.test.cjs)
 
 Objetivo: Recuperar aluno/treino em outra instância do repositório; preservar histórico e autoria ao salvar atualizações. |
