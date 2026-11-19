@@ -27,7 +27,9 @@
           "cameraPermission": false,
           "microphonePermission": false
         }
-      ]
+      ],
+      "expo-font",
+      "expo-sharing"
     ],
     "icon": "./assets/s64-logo.png"
   }
