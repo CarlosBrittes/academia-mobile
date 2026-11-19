@@ -12,7 +12,10 @@ export async function materialize(file, readChunk) {
   target.create({ overwrite: true });
   const handle = target.open();
   try {
-    for (let index = 0; index < file.chunkCount; index++) handle.writeBytes(toByteArray(await readChunk(index)));
+    for (let index = 0; index < file.chunkCount; index++) {
+  const chunk = await readChunk(index);
+  await handle.writeBytes(toByteArray(chunk));
+}
     return target.uri;
   } catch (error) { handle.close(); target.delete(); throw error; }
   finally { try { handle.close(); } catch {} }
