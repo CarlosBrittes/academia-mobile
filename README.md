@@ -66,6 +66,7 @@ Com as dependências instaladas, execute:
 
 ```powershell
 npm.cmd start
+npx.cmd expo start --go --clear --port 8082
 ```
 
 Abra o **Expo Go compatível com o SDK 54** e leia o QR Code exibido no terminal. Para uma conexão pela rede local, mantenha o celular e o computador na mesma rede Wi-Fi.
